@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     
-    <PackageId>dynamo53</PackageId>
+    <PackageId>DynamoOnline/</PackageId>
     <Version>1.0.12</Version>
     <Authors>Joseph</Authors>
     <Description>A library by Dynamo Online</Description>
