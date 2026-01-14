@@ -36,12 +36,13 @@ jobs:
           
           echo "Got OIDC token (first 50 chars): ${OIDC_TOKEN:0:50}..."
           
-          # Call NuGet token endpoint
+          # Call NuGet token endpoint with Authorization header
           echo "Calling NuGet token endpoint..."
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             "https://www.nuget.org/api/v2/token" \
             -H "Content-Type: application/json" \
-            -d "{\"oidcToken\": \"$OIDC_TOKEN\", \"user\": \"$NUGET_USER\"}")
+            -H "Authorization: Bearer $OIDC_TOKEN" \
+            -d "{\"user\": \"$NUGET_USER\"}")
           
           HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
           BODY=$(echo "$RESPONSE" | sed '$d')
