@@ -28,17 +28,20 @@ jobs:
       - name: Pack
         run: dotnet pack -c Release -o ./artifacts --no-build
 
-      - name: Full debug - call NuGet API manually
+      - name: Debug username hex
         run: |
-          OIDC_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://www.nuget.org" | jq -r '.value')
-          
-          # Try calling with verbose output and full headers
-          echo "=== Full curl request ==="
-          curl -v -X POST \
-            "https://www.nuget.org/api/v2/token" \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $OIDC_TOKEN" \
-            -d "{\"username\": \"$NUGET_USER\", \"tokenType\": \"ApiKey\"}" 2>&1
+          echo "Username: $NUGET_USER"
+          echo "Username hex:"
+          echo -n "$NUGET_USER" | xxd
+          echo "Username length: ${#NUGET_USER}"
         env:
           NUGET_USER: ${{ secrets.NUGET_USER }}
+
+      - name: Try NuGet login action directly
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+      
+      - name: Push to NuGet
+        run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
