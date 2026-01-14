@@ -37,15 +37,10 @@ jobs:
       - name: Tamper and push
         run: |
           cd artifacts
-          ls -la
           
           # Extract
           mkdir tampered
           unzip -o *.nupkg -d tampered
-          
-          # Show original
-          echo "=== Original ==="
-          cat tampered/*.nuspec
           
           # Modify - change DynamoTest456 to DynamoOnline
           find tampered -name "*.nuspec" -exec sed -i 's/DynamoTest456/DynamoOnline/g' {} \;
@@ -59,9 +54,12 @@ jobs:
           zip -r ../tampered.nupkg .
           cd ..
           
-          # Push with curl
+          # Push with curl and proper headers
           curl -X PUT "https://www.nuget.org/api/v2/package/" \
             -H "X-NuGet-ApiKey: $NUGET_KEY" \
+            -H "X-NuGet-Client-Version: 6.0.0" \
+            -H "X-NuGet-Protocol-Version: 4.1.0" \
+            -H "User-Agent: NuGet Command Line/6.0.0 (Linux)" \
             -H "Content-Type: application/octet-stream" \
             --data-binary @tampered.nupkg -v
         env:
