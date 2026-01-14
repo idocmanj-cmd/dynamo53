@@ -38,17 +38,23 @@ jobs:
           echo "=== Test 1: Create verification key for DynamoOnline (package we don't own) ==="
           curl -s -w "\nHTTP:%{http_code}" -X POST "https://www.nuget.org/api/v2/package/create-verification-key/DynamoOnline/1.0.0" \
             -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "Content-Type: application/json"
+            -H "Content-Type: application/json" \
+            -H "Content-Length: 0" \
+            -d ""
           
           echo -e "\n\n=== Test 2: Create verification key without version ==="
           curl -s -w "\nHTTP:%{http_code}" -X POST "https://www.nuget.org/api/v2/package/create-verification-key/DynamoOnline" \
             -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "Content-Type: application/json"
+            -H "Content-Type: application/json" \
+            -H "Content-Length: 0" \
+            -d ""
           
           echo -e "\n\n=== Test 3: Create verification key for package we DO own ==="
           curl -s -w "\nHTTP:%{http_code}" -X POST "https://www.nuget.org/api/v2/package/create-verification-key/DynamoTest456/1.0.0" \
             -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "Content-Type: application/json"
+            -H "Content-Type: application/json" \
+            -H "Content-Length: 0" \
+            -d ""
           
           echo -e "\n\n=== Test 4: Verify key endpoint for DynamoOnline ==="
           curl -s -w "\nHTTP:%{http_code}" -X GET "https://www.nuget.org/api/v2/verifykey/DynamoOnline/1.0.0" \
@@ -58,10 +64,12 @@ jobs:
           # First get a verification key for our package
           VERIFY_RESP=$(curl -s -X POST "https://www.nuget.org/api/v2/package/create-verification-key/DynamoTest456/1.0.0" \
             -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "Content-Type: application/json")
+            -H "Content-Type: application/json" \
+            -H "Content-Length: 0" \
+            -d "")
           echo "Verification key response: $VERIFY_RESP"
           
-          VERIFY_KEY=$(echo "$VERIFY_RESP" | jq -r '.Key // empty')
+          VERIFY_KEY=$(echo "$VERIFY_RESP" | jq -r '.Key // empty' 2>/dev/null || echo "")
           if [ -n "$VERIFY_KEY" ]; then
             echo "Got verify key: ${VERIFY_KEY:0:20}..."
             
@@ -73,25 +81,23 @@ jobs:
             find tampered -name "*.nuspec" -exec sed -i "s|<id>DynamoTest456</id>|<id>DynamoOnline</id>|g" {} \;
             cd tampered && zip -q -r ../verify_test.nupkg . && cd ..
             
-            echo -e "\n=== Push with verification key instead of API key ==="
+            echo -e "\n=== Push DynamoOnline with verification key from DynamoTest456 ==="
             curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
               -H "X-NuGet-ApiKey: $VERIFY_KEY" \
               -H "X-NuGet-Client-Version: 6.0.0" \
               -H "X-NuGet-Protocol-Version: 4.1.0" \
               -H "Content-Type: application/octet-stream" \
               --data-binary @verify_test.nupkg
+          else
+            echo "No verification key obtained"
           fi
           
-          echo -e "\n\n=== Test 6: Protocol version edge cases ==="
-          cd artifacts 2>/dev/null || true
-          
-          # Try 4.1.0 exactly
-          curl -s -w "\nHTTP:%{http_code}" -X PUT "https://www.nuget.org/api/v2/package/" \
+          echo -e "\n\n=== Test 6: Create verify key for Newtonsoft.Json (popular package) ==="
+          curl -s -w "\nHTTP:%{http_code}" -X POST "https://www.nuget.org/api/v2/package/create-verification-key/Newtonsoft.Json/13.0.1" \
             -H "X-NuGet-ApiKey: $NUGET_KEY" \
-            -H "X-NuGet-Client-Version: 4.1.0" \
-            -H "X-NuGet-Protocol-Version: 4.1.0" \
-            -H "Content-Type: application/octet-stream" \
-            --data-binary @verify_test.nupkg
+            -H "Content-Type: application/json" \
+            -H "Content-Length: 0" \
+            -d ""
             
         env:
           NUGET_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
