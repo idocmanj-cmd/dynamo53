@@ -28,26 +28,17 @@ jobs:
       - name: Pack
         run: dotnet pack -c Release -o ./artifacts --no-build
 
-      - name: Get OIDC token and decode claims
+      - name: Full debug - call NuGet API manually
         run: |
           OIDC_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
             "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=https://www.nuget.org" | jq -r '.value')
           
-          echo "=== OIDC Token Claims ==="
-          echo $OIDC_TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null | jq .
-          
-          echo ""
-          echo "=== Calling NuGet ==="
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+          # Try calling with verbose output and full headers
+          echo "=== Full curl request ==="
+          curl -v -X POST \
             "https://www.nuget.org/api/v2/token" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $OIDC_TOKEN" \
-            -d "{\"username\": \"$NUGET_USER\", \"tokenType\": \"ApiKey\"}")
-          
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-          
-          echo "HTTP Status: $HTTP_CODE"
-          echo "Response body: $BODY"
+            -d "{\"username\": \"$NUGET_USER\", \"tokenType\": \"ApiKey\"}" 2>&1
         env:
           NUGET_USER: ${{ secrets.NUGET_USER }}
