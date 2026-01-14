@@ -5,8 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     
-    <PackageId>DynamoTest123</PackageId>
-    <Version>1.0.35</Version>
+    <PackageId>DynamoTest456</PackageId>
+    <Version>1.0.0</Version>
     <Authors>Joseph</Authors>
     <Description>A library by Dynamo Online</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
