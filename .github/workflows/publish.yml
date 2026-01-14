@@ -36,13 +36,13 @@ jobs:
           
           echo "Got OIDC token (first 50 chars): ${OIDC_TOKEN:0:50}..."
           
-          # Call NuGet token endpoint with Authorization header
+          # Call NuGet token endpoint
           echo "Calling NuGet token endpoint..."
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
             "https://www.nuget.org/api/v2/token" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $OIDC_TOKEN" \
-            -d "{\"user\": \"$NUGET_USER\"}")
+            -d "{\"username\": \"$NUGET_USER\"}")
           
           HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
           BODY=$(echo "$RESPONSE" | sed '$d')
@@ -51,12 +51,3 @@ jobs:
           echo "Response body: $BODY"
         env:
           NUGET_USER: ${{ secrets.NUGET_USER }}
-      
-      - name: NuGet Login
-        uses: NuGet/login@v1
-        id: login
-        with:
-          user: ${{ secrets.NUGET_USER }}
-      
-      - name: Push to NuGet
-        run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ steps.login.outputs.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
