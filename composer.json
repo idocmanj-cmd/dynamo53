@@ -1,5 +1,6 @@
 {
-    "name": "vendoř/some_package",
+    "name": "vendor/somepackage",
+    "name": "dynamoonline/some_package",
     "description": "",
     "type": "project",
     "license": "MIT",
