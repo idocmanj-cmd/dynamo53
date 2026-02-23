@@ -1,1 +1,16 @@
-{}
+{
+    "name": "dynamoonline/test",
+    "description": "",
+    "type": "project",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "DynamoOnline\\Test\\": "src/"
+        }
+    },
+    "require": {
+        "php": "^8.1"
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
