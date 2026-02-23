@@ -1,5 +1,5 @@
 {
-    "namE": "vendor/gaga",
+    "name": "vendor%00/gaga",
     "description": "",
     "type": "project",
     "license": "MIT",
