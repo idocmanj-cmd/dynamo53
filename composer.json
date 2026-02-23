@@ -1,6 +1,6 @@
 {
     "name": "dynamoonline/gaga",
-    "name": "vendor\n/gaga",
+    "name": "vendor\0x/gaga",
     "description": "",
     "type": "project",
     "license": "MIT",
